@@ -17,6 +17,17 @@ function download(content, type, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function boxFilename(values, extension) {
+  const toMillimetres = (value) => {
+    const parsed = parseFloat(value);
+    if (Number.isNaN(parsed)) return '0';
+    const millimetres = values.unit === 'in' ? parsed * MM_PER_IN : parsed;
+    return Number(millimetres.toFixed(3)).toString();
+  };
+
+  return `${toMillimetres(values.length)} x ${toMillimetres(values.width)} x ${toMillimetres(values.depth)} mm Box.${extension}`;
+}
+
 function createDXF(model) {
   let dxf = '0\nSECTION\n2\nENTITIES\n';
   const writePolyline = (segments, layer) => {
@@ -141,10 +152,10 @@ export default function App() {
     const drawLine = (line) => pdf.line(line.x1 - box.x, line.y1 - box.y, line.x2 - box.x, line.y2 - box.y);
     pdf.setDrawColor(0, 0, 0); pdf.setLineWidth(0.3); model.cuts.getSegments().forEach(drawLine);
     pdf.setDrawColor(255, 0, 0); pdf.setLineWidth(0.3); if (!model.perfEnabled) pdf.setLineDashPattern([2, 2], 0); model.folds.getSegments().forEach(drawLine);
-    pdf.save('FEFCO_0427_Dieline.pdf');
+    pdf.save(boxFilename(values, 'pdf'));
   };
   return <>
-    <Sidebar values={values} setValues={setValues} model={model} onDXF={() => download(createDXF(model), 'application/dxf', 'FEFCO_0427_Dieline.dxf')} onPDF={exportPDF} onSVG={() => download(model.svgHTML, 'image/svg+xml;charset=utf-8', 'FEFCO_0427_Dieline.svg')} />
+    <Sidebar values={values} setValues={setValues} model={model} onDXF={() => download(createDXF(model), 'application/dxf', boxFilename(values, 'dxf'))} onPDF={exportPDF} onSVG={() => download(model.svgHTML, 'image/svg+xml;charset=utf-8', boxFilename(values, 'svg'))} />
     <Canvas model={model} />
     <div id="toast" style={toast ? { display: 'block', opacity: 1 } : undefined}>{toast}</div>
   </>;
