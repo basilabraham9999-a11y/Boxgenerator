@@ -28,6 +28,33 @@ function boxFilename(values, extension) {
   return `${toMillimetres(values.length)} x ${toMillimetres(values.width)} x ${toMillimetres(values.depth)} mm Box.${extension}`;
 }
 
+function enforceDimensionMinimums(values) {
+  const unitMultiplier = values.unit === 'in' ? MM_PER_IN : 1;
+  const thickness = Math.max(0.1, Math.min(7, parseFloat(values.thickness) || 1.5));
+  const minimumHeightMm = Math.max(18, thickness * 4);
+  const enteredHeight = parseFloat(values.depth);
+  const heightMm = Math.max(minimumHeightMm, Number.isNaN(enteredHeight) ? minimumHeightMm : enteredHeight * unitMultiplier);
+  const enteredWidth = parseFloat(values.width);
+  const widthMm = Math.max(heightMm, Number.isNaN(enteredWidth) ? heightMm : enteredWidth * unitMultiplier);
+  const format = (millimetres) => (millimetres / unitMultiplier).toFixed(values.unit === 'in' ? 3 : 1);
+
+  return { ...values, depth: format(heightMm), width: format(widthMm) };
+}
+
+function dimensionViolations(values) {
+  const unitMultiplier = values.unit === 'in' ? MM_PER_IN : 1;
+  const thickness = Math.max(0.1, Math.min(7, parseFloat(values.thickness) || 1.5));
+  const minimumHeightMm = Math.max(18, thickness * 4);
+  const enteredHeight = parseFloat(values.depth);
+  const effectiveHeightMm = Math.max(minimumHeightMm, Number.isNaN(enteredHeight) ? minimumHeightMm : enteredHeight * unitMultiplier);
+  const enteredWidth = parseFloat(values.width);
+
+  return {
+    height: Number.isNaN(enteredHeight) || enteredHeight * unitMultiplier < minimumHeightMm,
+    width: Number.isNaN(enteredWidth) || enteredWidth * unitMultiplier < effectiveHeightMm,
+  };
+}
+
 function createDXF(model) {
   let dxf = '0\nSECTION\n2\nENTITIES\n';
   const writePolyline = (segments, layer) => {
@@ -46,8 +73,21 @@ function createDXF(model) {
   return `${dxf}0\nENDSEC\n0\nEOF`;
 }
 
-function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG }) {
+function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG, onConstraintViolation }) {
   const setField = (field) => (event) => setValues((current) => ({ ...current, [field]: event.target.value }));
+  const enforceMinimums = () => {
+    const violations = dimensionViolations(values);
+    const corrected = enforceDimensionMinimums(values);
+    setValues(corrected);
+
+    if (violations.height && violations.width) {
+      onConstraintViolation(`Height was set to ${corrected.depth} ${values.unit}, and Width was increased to match it.`);
+    } else if (violations.height) {
+      onConstraintViolation(`Height cannot be lower than ${corrected.depth} ${values.unit}. The minimum was applied.`);
+    } else if (violations.width) {
+      onConstraintViolation(`Width cannot be lower than Height. Width was set to ${corrected.width} ${values.unit}.`);
+    }
+  };
   const setUnit = (unit) => {
     if (unit === values.unit) return;
     const from = values.unit === 'in' ? MM_PER_IN : 1;
@@ -61,13 +101,13 @@ function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG }) {
   const changeThickness = (amount) => setValues((current) => {
     const value = parseFloat(current.thickness) || 1.5;
     if ((amount < 0 && value <= 0.1) || (amount > 0 && value >= 4)) return current;
-    return { ...current, thickness: (value + amount).toFixed(1) };
+    return enforceDimensionMinimums({ ...current, thickness: (value + amount).toFixed(1) });
   });
 
   return <aside>
     <div className="sidebar-body">
       <div className="section-header-row">
-        <div className="sec-title">Custom size <InfoIcon /></div>
+        <div className="sec-title">Custom size</div>
         <div className="unit-toggle">
           <div className={`unit-btn ${values.unit === 'mm' ? 'active' : ''}`} onClick={() => setUnit('mm')}>mm</div>
           <div className={`unit-btn ${values.unit === 'in' ? 'active' : ''}`} onClick={() => setUnit('in')}>in</div>
@@ -76,14 +116,14 @@ function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG }) {
       <div className="size-grid">
         {[['length', 'Length'], ['width', 'Width'], ['depth', 'Height']].map(([field, label]) => <div className="input-group" key={field}>
           <label>{label}</label>
-          <div className="input-wrap"><input type="number" value={values[field]} min={field === 'depth' ? model.stats.minDepthInput : field === 'width' ? model.stats.minWidthInput : 1} onChange={setField(field)} /><span className="unit-text">{values.unit}</span></div>
+          <div className="input-wrap"><input type="number" value={values[field]} min={field === 'depth' ? model.stats.minDepthInput : field === 'width' ? model.stats.minWidthInput : 1} onChange={setField(field)} onBlur={field === 'depth' || field === 'width' ? enforceMinimums : undefined} /><span className="unit-text">{values.unit}</span></div>
         </div>)}
       </div>
 
       <div className="section-header-row" style={{ marginTop: 20 }}><div className="sec-title">Choose material <InfoIcon /></div></div>
       <div className="material-wrap">
         <div className="mat-color-dot" style={{ background: MATERIAL_COLORS[values.material] || '#d2b48c' }} />
-        <select value={values.material} onChange={(event) => setValues((current) => ({ ...current, material: event.target.value, thickness: event.target.value }))}>
+        <select value={values.material} onChange={(event) => setValues((current) => enforceDimensionMinimums({ ...current, material: event.target.value, thickness: event.target.value }))}>
           <option value="1.5">E-flute (1.5mm)</option><option value="3.0">B-flute (3.0mm)</option><option value="4.0">C-flute (4.0mm)</option><option value="7.0">BC-flute Double Wall (7.0mm)</option><option value="0.5">Paperboard (0.5mm)</option>
         </select>
       </div>
@@ -92,7 +132,7 @@ function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG }) {
       <div className="sub-label">(0.1~4.0mm)</div>
       <div className="stepper-wrap">
         <button className="stepper-btn" aria-label="Reduce thickness" onClick={() => changeThickness(-0.1)}>&minus;</button>
-        <input type="number" value={values.thickness} min="0.1" max="4" step="0.1" onChange={setField('thickness')} />
+        <input type="number" value={values.thickness} min="0.1" max="4" step="0.1" onChange={setField('thickness')} onBlur={enforceMinimums} />
         <button className="stepper-btn" onClick={() => changeThickness(0.1)}>+</button>
       </div>
 
@@ -155,7 +195,7 @@ export default function App() {
     pdf.save(boxFilename(values, 'pdf'));
   };
   return <>
-    <Sidebar values={values} setValues={setValues} model={model} onDXF={() => download(createDXF(model), 'application/dxf', boxFilename(values, 'dxf'))} onPDF={exportPDF} onSVG={() => download(model.svgHTML, 'image/svg+xml;charset=utf-8', boxFilename(values, 'svg'))} />
+    <Sidebar values={values} setValues={setValues} model={model} onDXF={() => download(createDXF(model), 'application/dxf', boxFilename(values, 'dxf'))} onPDF={exportPDF} onSVG={() => download(model.svgHTML, 'image/svg+xml;charset=utf-8', boxFilename(values, 'svg'))} onConstraintViolation={showToast} />
     <Canvas model={model} />
     <div id="toast" style={toast ? { display: 'block', opacity: 1 } : undefined}>{toast}</div>
   </>;
