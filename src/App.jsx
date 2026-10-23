@@ -36,7 +36,7 @@ function enforceDimensionMinimums(values) {
   const heightMm = Math.max(minimumHeightMm, Number.isNaN(enteredHeight) ? minimumHeightMm : enteredHeight * unitMultiplier);
   const enteredWidth = parseFloat(values.width);
   const widthMm = Math.max(heightMm, Number.isNaN(enteredWidth) ? heightMm : enteredWidth * unitMultiplier);
-  const format = (millimetres) => (millimetres / unitMultiplier).toFixed(values.unit === 'in' ? 3 : 1);
+  const format = (millimetres) => Number((millimetres / unitMultiplier).toFixed(values.unit === 'in' ? 3 : 1)).toString();
 
   return { ...values, depth: format(heightMm), width: format(widthMm) };
 }
@@ -94,7 +94,7 @@ function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG, onConstraintVi
     const to = unit === 'in' ? MM_PER_IN : 1;
     const convert = (value) => {
       const parsed = parseFloat(value);
-      return Number.isNaN(parsed) ? value : ((parsed * from) / to).toFixed(unit === 'in' ? 3 : 1);
+      return Number.isNaN(parsed) ? value : Number(((parsed * from) / to).toFixed(unit === 'in' ? 3 : 1)).toString();
     };
     setValues((current) => ({ ...current, unit, length: convert(current.length), width: convert(current.width), depth: convert(current.depth) }));
   };
