@@ -577,7 +577,9 @@ export function buildDieline(options) {
     '    <path class="cut-line" fill="none" stroke="#000000" stroke-width="1.5" d="' + cuts.render() + '" />\n' +
     '  </g>\n' +
     '  <g id="Folding">\n' +
-    '    <path class="fold-line" fill="none" stroke="#ff0000" stroke-width="1.5" stroke-dasharray="6,4" d="' + folds.render() + '" />\n' +
+    // Laser perforation uses real gaps in the path geometry. A solid stroke
+    // keeps normal folds continuous and each perforation cut a short red line.
+    '    <path class="fold-line" fill="none" stroke="#ff0000" stroke-width="1.5" d="' + folds.render() + '" />\n' +
     '  </g>\n' +
     '  <g id="Annotations">\n' + annotations + '  </g>\n' +
     '</svg>';

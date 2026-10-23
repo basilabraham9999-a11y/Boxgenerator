@@ -157,30 +157,73 @@ function Sidebar({ values, setValues, model, onDXF, onPDF, onSVG, onConstraintVi
 function Canvas({ model }) {
   const [view, setView] = useState({ scale: 0.5, panX: 0, panY: 0 });
   const drag = useRef(null);
+  const viewport = useRef(null);
+  const content = useRef(null);
+
+  const constrainView = (next) => {
+    const viewportWidth = viewport.current?.clientWidth || 0;
+    const viewportHeight = viewport.current?.clientHeight || 0;
+    const contentWidth = content.current?.offsetWidth || 0;
+    const contentHeight = content.current?.offsetHeight || 0;
+    const visibleEdge = 48;
+    const maxPanX = Math.max(0, viewportWidth / 2 + contentWidth * next.scale / 2 - visibleEdge);
+    const maxPanY = Math.max(0, viewportHeight / 2 + contentHeight * next.scale / 2 - visibleEdge);
+
+    return {
+      ...next,
+      panX: Math.max(-maxPanX, Math.min(maxPanX, next.panX)),
+      panY: Math.max(-maxPanY, Math.min(maxPanY, next.panY)),
+    };
+  };
+
   useEffect(() => {
-    const move = (event) => drag.current && setView((current) => ({ ...current, panX: event.clientX - drag.current.x, panY: event.clientY - drag.current.y }));
+    const move = (event) => drag.current && setView((current) => constrainView({ ...current, panX: event.clientX - drag.current.x, panY: event.clientY - drag.current.y }));
     const up = () => { drag.current = null; };
+    const resize = () => setView((current) => constrainView(current));
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('resize', resize);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); window.removeEventListener('resize', resize); };
   }, []);
-  const zoom = (amount) => setView((current) => ({ ...current, scale: Math.max(0.05, Math.min(3, current.scale + amount)) }));
+
+  const zoom = (getNextScale, clientX, clientY) => setView((current) => {
+    const scale = Math.max(0.1, Math.min(3, getNextScale(current.scale)));
+    const bounds = viewport.current?.getBoundingClientRect();
+    if (!bounds || scale === current.scale) return current;
+
+    // Keep the point beneath the cursor stationary while scaling. Buttons use
+    // the viewport centre, producing a predictable centred zoom.
+    const anchorX = (clientX ?? (bounds.left + bounds.width / 2)) - (bounds.left + bounds.width / 2);
+    const anchorY = (clientY ?? (bounds.top + bounds.height / 2)) - (bounds.top + bounds.height / 2);
+    const ratio = scale / current.scale;
+    return constrainView({
+      scale,
+      panX: anchorX - (anchorX - current.panX) * ratio,
+      panY: anchorY - (anchorY - current.panY) * ratio,
+    });
+  });
+
   const startDrag = (event) => { if (event.target === event.currentTarget || event.target.closest('#svg-wrapper')) drag.current = { x: event.clientX - view.panX, y: event.clientY - view.panY }; };
-  const wheel = (event) => { if (event.target === event.currentTarget || event.target.closest('#svg-wrapper')) { event.preventDefault(); zoom(-event.deltaY * 0.001); } };
+  const wheel = (event) => {
+    if (event.target !== event.currentTarget && !event.target.closest('#svg-wrapper')) return;
+    event.preventDefault();
+    const delta = Math.max(-120, Math.min(120, event.deltaY));
+    zoom((scale) => scale * Math.exp(-delta * 0.0015), event.clientX, event.clientY);
+  };
   const transform = `translate(-50%, -50%) translate(${view.panX}px, ${view.panY}px) scale(${view.scale})`;
 
-  return <main id="viewport" onMouseDown={startDrag} onWheel={wheel}>
+  return <main id="viewport" ref={viewport} onMouseDown={startDrag} onWheel={wheel}>
     <div className="zoom-bar">
-      <button className="zoom-btn" onClick={() => zoom(-0.1)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+      <button className="zoom-btn" onClick={() => zoom((scale) => scale - 0.1)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
       <div className="zoom-divider" /><span className="zoom-label">{Math.round(view.scale * 100)}%</span><div className="zoom-divider" />
-      <button className="zoom-btn" onClick={() => zoom(0.1)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+      <button className="zoom-btn" onClick={() => zoom((scale) => scale + 0.1)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
       <button className="reset-btn" onClick={() => setView({ scale: 0.5, panX: 0, panY: 0 })}>Reset</button>
     </div>
-    <div id="svg-wrapper" style={{ transform }} dangerouslySetInnerHTML={{ __html: model.svgHTML }} />
+    <div id="svg-wrapper" ref={content} style={{ transform }} dangerouslySetInnerHTML={{ __html: model.svgHTML }} />
   </main>;
 }
 
 export default function App() {
-  const [values, setValues] = useState({ length: '180', width: '120', depth: '50', thickness: '1.5', material: '1.5', unit: 'mm', showNames: false, showFormulas: false, perfFold: true });
+  const [values, setValues] = useState({ length: '180', width: '120', depth: '50', thickness: '1.5', material: '1.5', unit: 'mm', showNames: false, showFormulas: false, perfFold: false });
   const [toast, setToast] = useState('');
   const model = useMemo(() => buildDieline(values), [values]);
   const showToast = (message) => { setToast(message); setTimeout(() => setToast(''), 3300); };
@@ -191,7 +234,9 @@ export default function App() {
     const pdf = new JsPDF({ orientation: box.w > box.h ? 'l' : 'p', unit: 'mm', format: [box.w, box.h] });
     const drawLine = (line) => pdf.line(line.x1 - box.x, line.y1 - box.y, line.x2 - box.x, line.y2 - box.y);
     pdf.setDrawColor(0, 0, 0); pdf.setLineWidth(0.3); model.cuts.getSegments().forEach(drawLine);
-    pdf.setDrawColor(255, 0, 0); pdf.setLineWidth(0.3); if (!model.perfEnabled) pdf.setLineDashPattern([2, 2], 0); model.folds.getSegments().forEach(drawLine);
+    // Normal folds are continuous. Laser perforation is already represented
+    // by separate short path segments, so both modes use solid strokes.
+    pdf.setDrawColor(255, 0, 0); pdf.setLineWidth(0.3); model.folds.getSegments().forEach(drawLine);
     pdf.save(boxFilename(values, 'pdf'));
   };
   return <>
