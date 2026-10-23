@@ -95,7 +95,9 @@ export function buildDieline(options) {
 
   var dfW = D - 2 * T;
 
-  var sideOuterW = D + T;
+  // Thick board still uses a 1.5mm outer-panel allowance so the folded outer
+  // wall does not grow with the full material caliper.
+  var sideOuterW = D + (T >= 3 ? 1.5 : T);
   var sideTopW = 3 * T;
   var sideInnerW = D - 1.5 * T;
 
@@ -103,7 +105,8 @@ export function buildDieline(options) {
 
   var useDualLocks = L > 100;
   var useTripleLocks = L > 350;
-  var lockW = 2 * T + 2;
+  var lockTabProjection = 2 * T + 2;
+  var lockW = lockTabProjection;
   var lockH = 0.2 * L;
 
   // Lock-slot entry flare: fixed 3mm was tuned for 1.5mm E-flute. Thicker,
@@ -271,8 +274,8 @@ export function buildDieline(options) {
   
   slotList.forEach(function (slot) {
     cuts.L(xr_inner, slot.y1);
-    cuts.L(xr_inner + 2 * T, slot.y1 + lockFlare);
-    cuts.L(xr_inner + 2 * T, slot.y2 - lockFlare);
+    cuts.L(xr_inner + lockTabProjection, slot.y1 + lockFlare);
+    cuts.L(xr_inner + lockTabProjection, slot.y2 - lockFlare);
     cuts.L(xr_inner, slot.y2);
   });
 
@@ -305,8 +308,8 @@ export function buildDieline(options) {
 
   slotList.slice().reverse().forEach(function (slot) {
     cuts.L(xl_inner, slot.y2);
-    cuts.L(xl_inner - 2 * T, slot.y2 - lockFlare);
-    cuts.L(xl_inner - 2 * T, slot.y1 + lockFlare);
+    cuts.L(xl_inner - lockTabProjection, slot.y2 - lockFlare);
+    cuts.L(xl_inner - lockTabProjection, slot.y1 + lockFlare);
     cuts.L(xl_inner, slot.y1);
   });
 
@@ -511,7 +514,7 @@ export function buildDieline(options) {
     annotations += extLineV(xr_lid + tuckEarW, y_lid_top - 5, tuckEarY + 5);
     annotations += drawDimH(tuckEarW.toFixed(1), xr_lid, xr_lid + tuckEarW, tuckEarY);
 
-    var dimX_chainV = xl_inner - 2 * T - 15;
+    var dimX_chainV = xl_inner - lockTabProjection - 15;
     annotations += extLineH(y_tuck_top, xl_inner, dimX_chainV - 10);
     annotations += extLineH(y_lid_top, x_l, dimX_chainV - 10);
     annotations += extLineH(y_rear_top, x_l, dimX_chainV - 10);
@@ -537,8 +540,8 @@ export function buildDieline(options) {
 
   // --- RENDER ---
   var pad = 60;
-  var maxRight = Math.max(xr_inner + 2 * T, x_r + frEarW);
-  var maxLeft = Math.min(xl_inner - 2 * T, x_l - frEarW);
+  var maxRight = Math.max(xr_inner + lockTabProjection, x_r + frEarW);
+  var maxLeft = Math.min(xl_inner - lockTabProjection, x_l - frEarW);
 
   var canvasW = maxRight - maxLeft + (pad * 2);
   var canvasH = y_front_bot - y_tuck_top + (pad * 2);
